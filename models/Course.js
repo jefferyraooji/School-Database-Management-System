@@ -103,12 +103,13 @@ courseSchema.pre('save', function(next) {
 
 // Virtual for enrolled student count
 courseSchema.virtual('enrolledCount').get(function() {
-    return this.students.length;
+    return this.students ? this.students.length : 0;
 });
 
 // Virtual for available spots
 courseSchema.virtual('availableSpots').get(function() {
-    return this.maxStudents - this.students.length;
+    const studentCount = this.students ? this.students.length : 0;
+    return this.maxStudents - studentCount;
 });
 
 // Virtual for full course identifier
