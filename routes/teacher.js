@@ -492,6 +492,69 @@ router.patch('/grades/:gradeId/publish', async (req, res) => {
     }
 });
 
+// Update a grade
+router.put('/grades/:gradeId', async (req, res) => {
+    try {
+        const teacherId = req.user._id;
+        const gradeId = req.params.gradeId;
+        const { assessmentName, percentage, letterGrade, feedback, isPublished } = req.body;
+        
+        // Find the grade
+        const grade = await Grade.findById(gradeId).populate('course');
+        if (!grade) {
+            return res.status(404).json({
+                error: 'Grade not found',
+                message: 'The requested grade does not exist'
+            });
+        }
+        
+        // Verify teacher owns this course
+        if (grade.course.teacher.toString() !== teacherId.toString()) {
+            return res.status(403).json({
+                error: 'Access denied',
+                message: 'You can only edit grades for your own courses'
+            });
+        }
+        
+        // Validate input
+        if (percentage !== undefined && (percentage < 0 || percentage > 100)) {
+            return res.status(400).json({
+                error: 'Invalid percentage',
+                message: 'Percentage must be between 0 and 100'
+            });
+        }
+        
+        // Update grade
+        if (assessmentName !== undefined) grade.assessmentName = assessmentName;
+        if (percentage !== undefined) grade.percentage = percentage;
+        if (letterGrade !== undefined) grade.letterGrade = letterGrade;
+        if (feedback !== undefined) grade.feedback = feedback;
+        if (isPublished !== undefined) grade.isPublished = isPublished;
+        grade.updatedAt = new Date();
+        
+        await grade.save();
+        
+        // Populate for response
+        await grade.populate([
+            { path: 'student', select: 'firstName lastName studentId' },
+            { path: 'course', select: 'courseCode courseName' }
+        ]);
+        
+        res.json({
+            success: true,
+            message: 'Grade updated successfully',
+            grade: grade
+        });
+        
+    } catch (error) {
+        console.error('Update grade error:', error);
+        res.status(500).json({
+            error: 'Failed to update grade',
+            message: 'Error updating grade'
+        });
+    }
+});
+
 // Delete grade
 router.delete('/grades/:gradeId', async (req, res) => {
     try {

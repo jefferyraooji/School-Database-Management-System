@@ -6,6 +6,8 @@ let courses = [];
 let grades = [];
 let analytics = null;
 let transcript = null;
+let availableCourses = [];
+let filteredAvailableCourses = [];
 
 // Initialize student dashboard
 document.addEventListener('DOMContentLoaded', async function() {
@@ -206,7 +208,7 @@ function getGradeBadgeClass(percentage) {
 // Section management
 function showSection(sectionName) {
     // Hide all sections
-    const sections = ['dashboard', 'courses', 'grades', 'analytics', 'transcript'];
+    const sections = ['dashboard', 'courses', 'enrollment', 'grades', 'analytics', 'transcript'];
     sections.forEach(section => {
         const element = document.getElementById(`${section}Section`);
         if (element) {
@@ -223,6 +225,9 @@ function showSection(sectionName) {
         switch (sectionName) {
             case 'courses':
                 loadCoursesSection();
+                break;
+            case 'enrollment':
+                loadEnrollmentSection();
                 break;
             case 'grades':
                 loadGradesSection();
@@ -302,6 +307,9 @@ function displayCourses(coursesToDisplay) {
                 </button>
                 <button type="button" class="btn btn-secondary btn-sm" onclick="viewCourseGrades('${course._id}')">
                     <i class="fas fa-chart-line"></i> View Grades
+                </button>
+                <button type="button" class="btn btn-danger btn-sm" onclick="withdrawFromCourse('${course._id}', '${course.courseCode}', '${course.courseName}')">
+                    <i class="fas fa-times-circle"></i> Withdraw
                 </button>
             </div>
         </div>
@@ -898,5 +906,264 @@ function getGradePercentage(letterGrade) {
         'F': 50
     };
     return gradeMap[letterGrade] || 0;
+}
+
+// Course Enrollment Section
+async function loadEnrollmentSection() {
+    try {
+        showLoading();
+        
+        const response = await makeRequest(`${API_BASE}/student/available-courses`);
+        availableCourses = response.courses;
+        filteredAvailableCourses = [...availableCourses];
+        
+        // Populate department filter
+        populateDepartmentFilter();
+        
+        // Display available courses
+        displayAvailableCourses(filteredAvailableCourses);
+        
+    } catch (error) {
+        console.error('Failed to load available courses:', error);
+        showAlert('Failed to load available courses', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+function populateDepartmentFilter() {
+    const departmentFilter = document.getElementById('departmentFilter');
+    if (!departmentFilter || availableCourses.length === 0) return;
+    
+    const departments = [...new Set(availableCourses.map(course => course.department))];
+    departmentFilter.innerHTML = '<option value="">All Departments</option>' +
+        departments.map(dept => `<option value="${dept}">${dept}</option>`).join('');
+}
+
+function displayAvailableCourses(coursesToDisplay) {
+    const container = document.getElementById('availableCoursesContainer');
+    if (!container) return;
+    
+    if (coursesToDisplay.length === 0) {
+        container.innerHTML = `
+            <div class="text-center" style="grid-column: 1 / -1; padding: 3rem;">
+                <i class="fas fa-search" style="font-size: 3rem; color: #ccc; margin-bottom: 1rem;"></i>
+                <h3>No Available Courses</h3>
+                <p>No courses match your current filters, or you're already enrolled in all available courses.</p>
+                <button type="button" class="btn btn-secondary" onclick="refreshAvailableCourses()">
+                    <i class="fas fa-sync-alt"></i> Refresh Courses
+                </button>
+            </div>
+        `;
+        return;
+    }
+    
+    container.innerHTML = coursesToDisplay.map(course => `
+        <div class="card">
+            <div class="card-header">
+                <h4>${course.courseCode}</h4>
+                <p>${course.courseName}</p>
+            </div>
+            <div class="card-body">
+                <p><strong>Teacher:</strong> ${course.teacher.firstName} ${course.teacher.lastName}</p>
+                <p><strong>Department:</strong> ${course.department}</p>
+                <p><strong>Credits:</strong> ${course.credits}</p>
+                <p><strong>Semester:</strong> ${course.semester} ${course.year}</p>
+                <p><strong>Enrollment:</strong> ${course.enrolledCount}/${course.maxStudents} students</p>
+                <div class="progress" style="margin: 0.5rem 0;">
+                    <div class="progress-bar" style="width: ${(course.enrolledCount/course.maxStudents)*100}%;"></div>
+                </div>
+                <p><strong>Available Spots:</strong> <span class="badge badge-success">${course.availableSpots}</span></p>
+                ${course.description ? `<p><strong>Description:</strong> ${course.description}</p>` : ''}
+                ${course.schedule ? `
+                    <p><strong>Schedule:</strong></p>
+                    <ul style="margin: 0.5rem 0; padding-left: 1.5rem; font-size: 0.9rem;">
+                        ${course.schedule.days ? `<li>Days: ${course.schedule.days.join(', ')}</li>` : ''}
+                        ${course.schedule.startTime && course.schedule.endTime ? 
+                            `<li>Time: ${course.schedule.startTime} - ${course.schedule.endTime}</li>` : ''}
+                        ${course.schedule.room ? `<li>Room: ${course.schedule.room}</li>` : ''}
+                    </ul>
+                ` : ''}
+            </div>
+            <div class="card-footer">
+                <button type="button" class="btn btn-primary btn-sm" onclick="enrollInCourse('${course._id}', '${course.courseCode}', '${course.courseName}')" 
+                        ${course.availableSpots <= 0 ? 'disabled' : ''}>
+                    <i class="fas fa-plus-circle"></i> 
+                    ${course.availableSpots <= 0 ? 'Course Full' : 'Enroll'}
+                </button>
+                <button type="button" class="btn btn-secondary btn-sm" onclick="viewCourseEnrollmentDetails('${course._id}')">
+                    <i class="fas fa-info-circle"></i> Details
+                </button>
+            </div>
+        </div>
+    `).join('');
+}
+
+async function enrollInCourse(courseId, courseCode, courseName) {
+    if (!confirm(`Are you sure you want to enroll in ${courseCode} - ${courseName}?`)) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        
+        const response = await makeRequest(`${API_BASE}/student/enroll/${courseId}`, {
+            method: 'POST'
+        });
+        
+        showAlert(response.message, 'success');
+        
+        // Refresh available courses and enrolled courses
+        await Promise.all([
+            loadEnrollmentSection(),
+            loadCoursesSection()
+        ]);
+        
+        // Update dashboard if visible
+        if (document.getElementById('dashboardSection').style.display !== 'none') {
+            await loadDashboardData();
+        }
+        
+    } catch (error) {
+        console.error('Enrollment error:', error);
+        showAlert(error.message || 'Failed to enroll in course', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+async function withdrawFromCourse(courseId, courseCode, courseName) {
+    if (!confirm(`Are you sure you want to withdraw from ${courseCode} - ${courseName}? This action cannot be undone.`)) {
+        return;
+    }
+    
+    try {
+        showLoading();
+        
+        const response = await makeRequest(`${API_BASE}/student/withdraw/${courseId}`, {
+            method: 'DELETE'
+        });
+        
+        showAlert(response.message, 'success');
+        
+        // Refresh courses and available courses
+        await Promise.all([
+            loadCoursesSection(),
+            loadEnrollmentSection()
+        ]);
+        
+        // Update dashboard if visible
+        if (document.getElementById('dashboardSection').style.display !== 'none') {
+            await loadDashboardData();
+        }
+        
+    } catch (error) {
+        console.error('Withdrawal error:', error);
+        showAlert(error.message || 'Failed to withdraw from course', 'error');
+    } finally {
+        hideLoading();
+    }
+}
+
+function filterAvailableCourses() {
+    const departmentFilter = document.getElementById('departmentFilter').value;
+    const semesterFilter = document.getElementById('semesterFilterEnrollment').value;
+    
+    let filtered = availableCourses;
+    
+    if (departmentFilter) {
+        filtered = filtered.filter(course => course.department === departmentFilter);
+    }
+    
+    if (semesterFilter) {
+        filtered = filtered.filter(course => course.semester === semesterFilter);
+    }
+    
+    filteredAvailableCourses = filtered;
+    displayAvailableCourses(filteredAvailableCourses);
+}
+
+function searchAvailableCourses(searchTerm) {
+    if (!searchTerm.trim()) {
+        filterAvailableCourses();
+        return;
+    }
+    
+    const term = searchTerm.toLowerCase();
+    const searchResults = filteredAvailableCourses.filter(course => {
+        const courseCode = course.courseCode.toLowerCase();
+        const courseName = course.courseName.toLowerCase();
+        const teacherName = `${course.teacher.firstName} ${course.teacher.lastName}`.toLowerCase();
+        const department = course.department.toLowerCase();
+        
+        return courseCode.includes(term) || courseName.includes(term) || 
+               teacherName.includes(term) || department.includes(term);
+    });
+    
+    displayAvailableCourses(searchResults);
+}
+
+async function refreshAvailableCourses() {
+    showAlert('Refreshing available courses...', 'info', 2000);
+    await loadEnrollmentSection();
+}
+
+function viewCourseEnrollmentDetails(courseId) {
+    const course = availableCourses.find(c => c._id === courseId);
+    if (!course) return;
+    
+    const modal = createModal(
+        `${course.courseCode} - ${course.courseName}`,
+        `
+        <div class="course-enrollment-details">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem; margin-bottom: 2rem;">
+                <div>
+                    <h5>Course Information</h5>
+                    <p><strong>Department:</strong> ${course.department}</p>
+                    <p><strong>Credits:</strong> ${course.credits}</p>
+                    <p><strong>Semester:</strong> ${course.semester} ${course.year}</p>
+                    <p><strong>Teacher:</strong> ${course.teacher.firstName} ${course.teacher.lastName}</p>
+                    <p><strong>Email:</strong> ${course.teacher.email}</p>
+                </div>
+                <div>
+                    <h5>Enrollment Status</h5>
+                    <p><strong>Enrolled Students:</strong> ${course.enrolledCount}</p>
+                    <p><strong>Maximum Students:</strong> ${course.maxStudents}</p>
+                    <p><strong>Available Spots:</strong> <span class="badge badge-${course.availableSpots > 0 ? 'success' : 'danger'}">${course.availableSpots}</span></p>
+                    <div class="progress" style="margin: 1rem 0;">
+                        <div class="progress-bar" style="width: ${(course.enrolledCount/course.maxStudents)*100}%;"></div>
+                    </div>
+                </div>
+            </div>
+            ${course.description ? `
+                <div style="margin-bottom: 2rem;">
+                    <h5>Description</h5>
+                    <p>${course.description}</p>
+                </div>
+            ` : ''}
+            ${course.schedule ? `
+                <div>
+                    <h5>Schedule</h5>
+                    <ul>
+                        ${course.schedule.days ? `<li><strong>Days:</strong> ${course.schedule.days.join(', ')}</li>` : ''}
+                        ${course.schedule.startTime && course.schedule.endTime ? 
+                            `<li><strong>Time:</strong> ${course.schedule.startTime} - ${course.schedule.endTime}</li>` : ''}
+                        ${course.schedule.room ? `<li><strong>Room:</strong> ${course.schedule.room}</li>` : ''}
+                    </ul>
+                </div>
+            ` : ''}
+        </div>
+        `,
+        [
+            course.availableSpots > 0 ? 
+                `<button type="button" class="btn btn-primary" onclick="this.closest('.modal').remove(); document.body.style.overflow = 'auto'; enrollInCourse('${course._id}', '${course.courseCode}', '${course.courseName}');">
+                    <i class="fas fa-plus-circle"></i> Enroll Now
+                </button>` : 
+                `<button type="button" class="btn btn-secondary" disabled>
+                    <i class="fas fa-ban"></i> Course Full
+                </button>`,
+            '<button type="button" class="btn btn-secondary" onclick="this.closest(\'.modal\').remove(); document.body.style.overflow = \'auto\';">Close</button>'
+        ]
+    );
 }
 

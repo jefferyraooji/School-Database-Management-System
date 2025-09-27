@@ -1,13 +1,22 @@
 # Quick Start Instructions
 
-## After Setting Up MongoDB (Atlas or Local):
+## Prerequisites
+- Node.js (v14 or higher)
+- MongoDB Atlas account (or local MongoDB)
 
-### 1. Seed the Database with Demo Data
+## Setup Steps
+
+### 1. Install Dependencies
+```bash
+npm install
+```
+
+### 2. Seed Database with Demo Data
 ```bash
 npm run seed
 ```
 
-### 2. Start the Application
+### 3. Start Application
 ```bash
 # Development mode (with auto-restart)
 npm run dev
@@ -16,10 +25,10 @@ npm run dev
 npm start
 ```
 
-### 3. Access the Application
-Open your browser and go to: http://localhost:3000
+### 4. Access Application
+Open browser: http://localhost:3000
 
-### 4. Login with Demo Accounts
+## Demo Accounts
 
 **Teacher Account:**
 - Email: teacher@demo.com
@@ -33,35 +42,34 @@ Open your browser and go to: http://localhost:3000
 - Password: student123
 - Student ID: 12345678
 
-## What You'll See:
+## Features
 
-### For Teachers:
-- Dashboard with course and student statistics
-- Course management (create, edit, view courses)
-- Grade management (add, edit, publish grades)
-- Student management (view enrolled students)
+### Teachers Can:
+- Create and manage courses
+- Add/edit/publish student grades
+- View enrolled students
+- Access analytics dashboard
 
-### For Students:
-- Dashboard with GPA and course overview
-- Course details and teacher information
-- Grade tracking and performance analytics
-- Academic transcript generation
+### Students Can:
+- View enrolled courses
+- Check published grades
+- Generate academic transcripts
+- Track performance analytics
 
-## Troubleshooting:
+## Troubleshooting
 
-### If you see "Database connection failed":
-1. Make sure MongoDB is running (local) or Atlas connection string is correct
-2. Check your network connection
-3. Verify database user credentials
+**Database Connection Issues:**
+- Verify MongoDB Atlas connection string in config.env
+- Check network connectivity
+- Ensure database user has proper permissions
 
-### If you see "Port already in use":
-1. Change PORT in config.env to a different number (e.g., 3001)
-2. Or stop any other applications using port 3000
+**Port Already in Use:**
+- Change PORT in config.env to different number (e.g., 3001)
+- Stop other applications using port 3000
 
-### If pages don't load properly:
-1. Clear your browser cache
-2. Check browser console for JavaScript errors
-3. Make sure all dependencies are installed (npm install)
+**Page Loading Issues:**
+- Clear browser cache
+- Check browser console for errors
+- Ensure all dependencies installed (npm install)
 
-## Need Help?
-Check the README.md file for detailed documentation and troubleshooting guides.
+For detailed help, see README.md

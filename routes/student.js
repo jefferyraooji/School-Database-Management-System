@@ -291,6 +291,158 @@ router.get('/analytics', async (req, res) => {
     }
 });
 
+// Get available courses for enrollment
+router.get('/available-courses', async (req, res) => {
+    try {
+        const studentId = req.user._id;
+        
+        // Get all active courses
+        const allCourses = await Course.find({ isActive: true })
+            .populate('teacher', 'firstName lastName email')
+            .populate('students', '_id');
+        
+        // Filter out courses the student is already enrolled in
+        const availableCourses = allCourses.filter(course => {
+            const isEnrolled = course.students.some(student => 
+                student._id.toString() === studentId.toString()
+            );
+            const hasSpace = course.students.length < course.maxStudents;
+            return !isEnrolled && hasSpace;
+        });
+        
+        // Add enrollment info to each course
+        const coursesWithInfo = availableCourses.map(course => ({
+            ...course.toJSON(),
+            enrolledCount: course.students.length,
+            availableSpots: course.maxStudents - course.students.length,
+            canEnroll: true
+        }));
+        
+        res.json({
+            success: true,
+            courses: coursesWithInfo
+        });
+    } catch (error) {
+        console.error('Get available courses error:', error);
+        res.status(500).json({
+            error: 'Failed to load available courses',
+            message: 'Error retrieving course catalog'
+        });
+    }
+});
+
+// Enroll in a course
+router.post('/enroll/:courseId', async (req, res) => {
+    try {
+        const studentId = req.user._id;
+        const courseId = req.params.courseId;
+        
+        // Find the course
+        const course = await Course.findById(courseId);
+        if (!course || !course.isActive) {
+            return res.status(404).json({
+                error: 'Course not found',
+                message: 'The requested course does not exist or is not active'
+            });
+        }
+        
+        // Check if student is already enrolled
+        if (course.students.includes(studentId)) {
+            return res.status(400).json({
+                error: 'Already enrolled',
+                message: 'You are already enrolled in this course'
+            });
+        }
+        
+        // Check if course is full
+        if (course.students.length >= course.maxStudents) {
+            return res.status(400).json({
+                error: 'Course full',
+                message: 'This course has reached maximum enrollment'
+            });
+        }
+        
+        // Add student to course
+        course.students.push(studentId);
+        await course.save();
+        
+        // Add course to student's enrolled courses
+        const student = await User.findById(studentId);
+        if (!student.enrolledCourses.includes(courseId)) {
+            student.enrolledCourses.push(courseId);
+            await student.save();
+        }
+        
+        // Populate course data for response
+        await course.populate('teacher', 'firstName lastName email');
+        
+        res.json({
+            success: true,
+            message: `Successfully enrolled in ${course.courseCode} - ${course.courseName}`,
+            course: {
+                _id: course._id,
+                courseCode: course.courseCode,
+                courseName: course.courseName,
+                teacher: course.teacher,
+                credits: course.credits,
+                semester: course.semester,
+                year: course.year
+            }
+        });
+    } catch (error) {
+        console.error('Course enrollment error:', error);
+        res.status(500).json({
+            error: 'Enrollment failed',
+            message: 'Error enrolling in course'
+        });
+    }
+});
+
+// Withdraw from a course
+router.delete('/withdraw/:courseId', async (req, res) => {
+    try {
+        const studentId = req.user._id;
+        const courseId = req.params.courseId;
+        
+        // Find the course
+        const course = await Course.findById(courseId);
+        if (!course) {
+            return res.status(404).json({
+                error: 'Course not found',
+                message: 'The requested course does not exist'
+            });
+        }
+        
+        // Check if student is enrolled
+        if (!course.students.includes(studentId)) {
+            return res.status(400).json({
+                error: 'Not enrolled',
+                message: 'You are not enrolled in this course'
+            });
+        }
+        
+        // Remove student from course
+        course.students = course.students.filter(id => id.toString() !== studentId.toString());
+        await course.save();
+        
+        // Remove course from student's enrolled courses
+        const student = await User.findById(studentId);
+        student.enrolledCourses = student.enrolledCourses.filter(id => id.toString() !== courseId.toString());
+        await student.save();
+        
+        res.json({
+            success: true,
+            message: `Successfully withdrew from ${course.courseCode} - ${course.courseName}`
+        });
+    } catch (error) {
+        console.error('Course withdrawal error:', error);
+        res.status(500).json({
+            error: 'Withdrawal failed',
+            message: 'Error withdrawing from course'
+        });
+    }
+});
+
 // Get transcript data
 router.get('/transcript', async (req, res) => {
     try {

@@ -717,8 +717,154 @@ function manageCourseStudents(courseId) {
 }
 
 function editGrade(gradeId) {
-    // This would populate the grade modal with existing data for editing
-    showAlert('Grade editing feature coming soon!', 'info');
+    const grade = grades.find(g => g._id === gradeId);
+    if (!grade) {
+        showAlert('Grade not found', 'error');
+        return;
+    }
+    
+    const modal = createModal(
+        `Edit Grade - ${grade.assessmentName}`,
+        `
+        <form id="editGradeForm">
+            <div class="form-group">
+                <label for="editAssessmentName">Assessment Name</label>
+                <input type="text" id="editAssessmentName" name="assessmentName" 
+                       value="${grade.assessmentName}" required class="form-control">
+            </div>
+            
+            <div class="form-group">
+                <label for="editPercentage">Percentage Score</label>
+                <input type="number" id="editPercentage" name="percentage" 
+                       value="${grade.percentage}" min="0" max="100" step="0.1" 
+                       required class="form-control" onchange="updateLetterGrade()">
+            </div>
+            
+            <div class="form-group">
+                <label for="editLetterGrade">Letter Grade</label>
+                <select id="editLetterGrade" name="letterGrade" class="form-control">
+                    <option value="A+" ${grade.letterGrade === 'A+' ? 'selected' : ''}>A+ (97-100)</option>
+                    <option value="A" ${grade.letterGrade === 'A' ? 'selected' : ''}>A (93-96)</option>
+                    <option value="A-" ${grade.letterGrade === 'A-' ? 'selected' : ''}>A- (90-92)</option>
+                    <option value="B+" ${grade.letterGrade === 'B+' ? 'selected' : ''}>B+ (87-89)</option>
+                    <option value="B" ${grade.letterGrade === 'B' ? 'selected' : ''}>B (83-86)</option>
+                    <option value="B-" ${grade.letterGrade === 'B-' ? 'selected' : ''}>B- (80-82)</option>
+                    <option value="C+" ${grade.letterGrade === 'C+' ? 'selected' : ''}>C+ (77-79)</option>
+                    <option value="C" ${grade.letterGrade === 'C' ? 'selected' : ''}>C (73-76)</option>
+                    <option value="C-" ${grade.letterGrade === 'C-' ? 'selected' : ''}>C- (70-72)</option>
+                    <option value="D+" ${grade.letterGrade === 'D+' ? 'selected' : ''}>D+ (67-69)</option>
+                    <option value="D" ${grade.letterGrade === 'D' ? 'selected' : ''}>D (63-66)</option>
+                    <option value="D-" ${grade.letterGrade === 'D-' ? 'selected' : ''}>D- (60-62)</option>
+                    <option value="F" ${grade.letterGrade === 'F' ? 'selected' : ''}>F (0-59)</option>
+                </select>
+            </div>
+            
+            <div class="form-group">
+                <label for="editFeedback">Feedback</label>
+                <textarea id="editFeedback" name="feedback" rows="3" 
+                          class="form-control" placeholder="Enter feedback for the student...">${grade.feedback || ''}</textarea>
+            </div>
+            
+            <div class="form-group">
+                <div class="form-check">
+                    <input type="checkbox" id="editIsPublished" name="isPublished" 
+                           class="form-check-input" ${grade.isPublished ? 'checked' : ''}>
+                    <label for="editIsPublished" class="form-check-label">
+                        Publish grade (make visible to student)
+                    </label>
+                </div>
+            </div>
+            
+            <div class="form-group">
+                <label>Student Information</label>
+                <p class="text-muted">
+                    <strong>Student:</strong> ${grade.student.firstName} ${grade.student.lastName} (${grade.student.studentId})<br>
+                    <strong>Course:</strong> ${grade.course.courseCode} - ${grade.course.courseName}
+                </p>
+            </div>
+        </form>
+        `,
+        [
+            '<button type="button" class="btn btn-primary" onclick="saveGradeEdit(\'' + gradeId + '\')">Save Changes</button>',
+            '<button type="button" class="btn btn-secondary" onclick="this.closest(\'.modal\').remove(); document.body.style.overflow = \'auto\';">Cancel</button>'
+        ]
+    );
+}
+
+function updateLetterGrade() {
+    const percentage = parseFloat(document.getElementById('editPercentage').value);
+    const letterGradeSelect = document.getElementById('editLetterGrade');
+    
+    if (isNaN(percentage)) return;
+    
+    let letterGrade = 'F';
+    if (percentage >= 97) letterGrade = 'A+';
+    else if (percentage >= 93) letterGrade = 'A';
+    else if (percentage >= 90) letterGrade = 'A-';
+    else if (percentage >= 87) letterGrade = 'B+';
+    else if (percentage >= 83) letterGrade = 'B';
+    else if (percentage >= 80) letterGrade = 'B-';
+    else if (percentage >= 77) letterGrade = 'C+';
+    else if (percentage >= 73) letterGrade = 'C';
+    else if (percentage >= 70) letterGrade = 'C-';
+    else if (percentage >= 67) letterGrade = 'D+';
+    else if (percentage >= 63) letterGrade = 'D';
+    else if (percentage >= 60) letterGrade = 'D-';
+    
+    letterGradeSelect.value = letterGrade;
+}
+
+async function saveGradeEdit(gradeId) {
+    try {
+        const form = document.getElementById('editGradeForm');
+        const formData = new FormData(form);
+        
+        const updateData = {
+            assessmentName: formData.get('assessmentName'),
+            percentage: parseFloat(formData.get('percentage')),
+            letterGrade: formData.get('letterGrade'),
+            feedback: formData.get('feedback'),
+            isPublished: formData.has('isPublished')
+        };
+        
+        // Validate
+        if (!updateData.assessmentName.trim()) {
+            showAlert('Assessment name is required', 'error');
+            return;
+        }
+        
+        if (isNaN(updateData.percentage) || updateData.percentage < 0 || updateData.percentage > 100) {
+            showAlert('Percentage must be between 0 and 100', 'error');
+            return;
+        }
+        
+        showLoading();
+        
+        const response = await makeRequest(`${API_BASE}/teacher/grades/${gradeId}`, {
+            method: 'PUT',
+            body: JSON.stringify(updateData)
+        });
+        
+        showAlert(response.message, 'success');
+        
+        // Close modal
+        document.querySelector('.modal').remove();
+        document.body.style.overflow = 'auto';
+        
+        // Refresh grades data
+        await loadGradesSection();
+        
+        // Update dashboard if visible
+        if (document.getElementById('dashboardSection').style.display !== 'none') {
+            await loadDashboardData();
+        }
+        
+    } catch (error) {
+        console.error('Save grade edit error:', error);
+        showAlert(error.message || 'Failed to update grade', 'error');
+    } finally {
+        hideLoading();
+    }
 }
 
 function viewStudentGrades(studentId) {
